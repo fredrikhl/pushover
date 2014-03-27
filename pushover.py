@@ -86,7 +86,7 @@ class PushoverConfig:
         valid = True
         # This is mostly to check that we have a token and device key.
         for attr in self.defaults.keys():
-            if not getattr(self, attr):
+            if not getattr(self, attr) or attr == 'device':
                 valid = False
                 if self.logger:
                     self.logger.warning("No setting for %s", attr)
