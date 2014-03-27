@@ -7,7 +7,6 @@ from __future__ import with_statement
 
 import httplib
 import urllib
-import logging
 
 try:
     import json
@@ -15,18 +14,41 @@ except ImportError:
     import simplejson as json
 
 
-class PushoverConfig:
+class PushoverError(Exception):
+
+    """ Generic pushover related error. """
+
+    pass
+
+
+class PushoverConfigError(PushoverError):
+
+    """ Config-related error. """
+
+    pass
+
+
+class PushoverConfig(object):
 
     """ Config class for pushover.
 
     This class is used to keep API url, key, and other relevant data. It can
     also be initialized from a file.
 
+    It is a glorified dict.
+
     """
 
-    defaults = {
-        'proto': 'https', 'host': 'api.pushover.net',
-        'token': '', 'user': '', 'device': '', }
+    # Default mandatory settings
+    settings = {
+        'proto': 'https',
+        'host': 'api.pushover.net',
+        'resource': '/1/messages.json',
+        'token': None,
+        'user': None, }
+
+    # Optional settings
+    options = {'device': None, }
 
     def __init__(self, **kwargs):
         """ Initialize the setting structure.
@@ -34,20 +56,37 @@ class PushoverConfig:
         Settings can be initialized through kwargs.
 
         """
-        self.logger = None
-
-        for key, value in self.defaults.items():
-            setattr(self, key, value)
+        # Set kwargs
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+    def __setattr__(self, key, value):
+        """ Set the value, or raise exception if not defined. """
+
+        if key in self.settings.keys():
+            if not value:
+                raise PushoverConfigError("Setting '%s' requires a value" % key)
+            self.settings[key] = value
+        elif key in self.options.keys():
+            self.options[key] = value
+        else:
+            raise PushoverConfigError("Invalid setting '%s'" % key)
+
+    def __getattr__(self, key):
+        """ Get the value, or raise exception if not defined. """
+
+        if key in self.settings:
+            return self.settings.get(key)
+        elif key in self.options:
+            return self.options.get(key)
+        raise PushoverConfigError("Invalid setting '%s'" % key)
 
     def read(self, filename):
         """ Read config from file.
 
         The config format is very simple:
           - One assignment per line (key = value)
-          - Legal keys are defined by self.defaults.keys()
-          - Each value is a single word string
+          - Legal settings are defined by self.settings and self.options
 
         """
         with open(filename, 'r') as fd:
@@ -57,46 +96,55 @@ class PushoverConfig:
                 try:
                     key, val = line.split('=')
                 except ValueError:
-                    if self.logger:
-                        self.logger.warning(
-                            "Error in config '%s', line %d: %s",
-                            filename, lineno, repr(line))
-                    continue
+                    raise PushoverConfigError(
+                        "Error in config '%s', line %d: %s" % (
+                        filename, lineno, repr(line.strip())))
                 key, val = key.strip(), val.strip()
                 try:
                     setattr(self, key, val)
-                    if self.logger:
-                        self.logger.debug("Read config: <%s>=<%s>",
-                                          str(key), str(val))
-                except AttributeError:
-                    if self.logger:
-                        self.logger.error("Unable to set: <%s>=<%s>",
-                                          str(key), str(val))
-                    continue
+                except PushoverConfigError, e:
+                    raise PushoverConfigError(
+                        "Error in config '%s', line %d: %s" % (filename, lineno,
+                                                               str(e)))
 
     def url(self):
         """ Get the url to the service, based on current settings. """
 
-        return '%(proto)s://%(host)s/1/messages.json' % {
-            'proto': self.proto,
-            'host': self.host, }
+        return '%(proto)s://%(host)s%(resource)s' % {'proto': self.proto,
+                                                     'host': self.host,
+                                                     'resource': self.resource}
 
     def validate(self):
-        """ Check that we have all the neccessary stuff. """
-        valid = True
-        # This is mostly to check that we have a token and device key.
-        for attr in self.defaults.keys():
-            if not getattr(self, attr) or attr == 'device':
-                valid = False
-                if self.logger:
-                    self.logger.warning("No setting for %s", attr)
-        return valid
+        """ Check that we have all the neccessary stuff. 
+        
+        The intention here is to check that the mandatory settings without a
+        default value has been set.
+
+        """
+        missing = []
+        for key, value in self.settings.items():
+            if not value:
+                missing.append(key)
+        if missing:
+            raise PushoverConfigError("Validate failed, missing settings: %s" %
+                                      ','.join(missing))
+
+    #def prepareMessage(self, message):
+        #""" Return urlencoded message. """
+
+        #params = dict(message.toDict().items() + {'token': self.token,
+                                                  #'user': self.user})
+        #if self.device:
+            #params.update({'device': self.device})
+
+        #return urllib.urlencode(params)
 
     def __repr__(self):
         """ Get a simple representation of the settings. """
+
         return "PushoverConfig(%s)" % ", ".join(["%s=%s" % (
-            key, getattr(self, key, '<not set>')) for key in
-            self.defaults.keys()])
+            key, getattr(self, key) or '<not set>') for key in
+            (self.settings.keys() + self.options.keys())])
 
 
 class PushoverMessage:
@@ -107,12 +155,12 @@ class PushoverMessage:
     pri_default = 0
     pri_low = -1
 
-    def __init__(self, message, title='', url='', url_title=''):
+    def __init__(self, message, title='', url='', url_title=None):
         """ Initialize message with a string, and optional args. """
-        self.message   = message
-        self.title     = title
-        self.url       = url
-        self.url_title = url_title
+        self.setTitle(title)
+        self.setUrl(url, title=url_title)
+        self.setMessage(message)
+
         self.priority  = self.pri_default
         self.timestamp = None
 
@@ -126,47 +174,39 @@ class PushoverMessage:
 
     def setUrl(self, url, title=None):
         """ Set the message link (and optional link title). """
-        # TODO: Validate url?
         self.url = url
-        if title:
-            self.url_title = title
+        self.url_title = title
 
-    def toDict(self):
-        """ Build message dict (for urlencode). """
+    def toDict(self, display=False):
+        """ Build message dict (for urlencode or display). """
         # Mandatory message parameters
         p = {'message': self.message}
 
         # Optional message parameters:
-        if self.title:
-            p.update({'title': self.title})
-        if self.url:
-            p.update({'url': self.url})
-        if self.url_title:
-            p.update({'url_title': self.url_title})
-        if self.priority:
-            p.update({'priority': self.priority})
-        if self.timestamp:
-            p.update({'timestamp': self.timestamp})
-
+        for attr in ('title', 'url', 'url_title', 'priority', 'timestamp'):
+            if getattr(self, attr):
+                p[attr] = getattr(self, attr)
+            elif display:
+                p[attr] = '<no %s>' % attr
         return p
 
-    def encode(self):
+    def prepare(self, config):
         """ Return urlencoded message. """
-        # TODO: Move the token++ settings into the message, and let the
-        # toDict+encode methods do the encoding.
-        # The encode method is useless if we don't have all the parameters.
-        return urllib.urlencode(self.toDict())
 
+        params = dict(self.toDict().items() + [('token', config.token),
+                                              ('user', config.user)])
+        if config.device:
+            params.update({'device': config.device})
+
+        return urllib.urlencode(params)
+        
     def __repr__(self):
         """ String representation. """
-        obj = "PushoverMessage, "
-        title = self.title or "<no title>"
-        if self.url:
-            title += ' (%s%s)' % (
-                self.url_title+': ' if self.url_title else '',
-                self.url, )
-        return "%s%s\n%s%s" % (obj, title, ' ' * len(obj),
-                               self.message or "<no message>")
+
+        fmt = ("PushoverMessage: %(title)s\n"
+               "            url: %(url_title)s, %(url)s\n"
+               "        message: %(message)s")
+        return fmt % self.toDict(display=True)
 
 
 class PushoverSender:
@@ -178,47 +218,33 @@ class PushoverSender:
 
     """
 
-    def __init__(self, settings, logger=None):
+    def __init__(self, settings):
         """ Initialize using a PushoverConfig object. """
 
         if not isinstance(settings, PushoverConfig):
             raise TypeError(
                 "PushoverSender must be set up with a PushoverConfig object.")
         self.settings = settings
-        self.logger = logger
 
     def sendMessage(self, message):
         """ Send a PushoverMessage using the settings from this object. """
         # Prepare
-        params = message.toDict()
-        params.update({'token':  self.settings.token})
-        params.update({'user':   self.settings.user})
-        if self.settings.device:
-            params.update({'device': self.settings.device})
-
-        body = urllib.urlencode(params)
-        if self.logger:
-            self.logger.debug("Request body: %(body)s", {"body": body})
+        body = message.prepare(self.settings)
 
         # Connect and send
         # TODO: Fix unsecure SSL socket (ecrtificate + hostname validation).
         #       Should I bother?
-        # Also: Catch and log connection related exceptions.
         conn = httplib.HTTPSConnection(self.settings.host)
         conn.request("POST", self.settings.url(), body)
         res = conn.getresponse()
-        if self.logger:
-            self.logger.debug("HTTP reply: %(status)d %(reason)s",
-                              {"status": res.status, "reason": res.reason})
 
         # TODO: Catch and log json errors
         data = json.loads(res.read())
         conn.close()
 
         if (not data.get('status')) or data.get('status') != 1:
-            if self.logger:
-                for e in data.get('errors', ['no errors', ]):
-                    self.logger.warning("Error: %(e)s", {"e": str(e)})
+            for e in data.get('errors', ['no errors', ]):
+                print ("Error: %(e)s", {"e": str(e)})
             return False
         return True
 
@@ -231,58 +257,39 @@ def main(args):
     from getopt import getopt, GetoptError
 
     rcfile = os.path.join(os.path.expanduser('~'), '.pushoverrc')
-    logger = logging
-    loglevel = logging.INFO
-
-    def _exit(message):
-        """ Error exit helper. Use: return _exit("message") """
-        if logger:
-            logger.error(message)
-            return 1
-        raise SystemExit(message)
 
     try:
-        opts, args = getopt(args, 'c:dqt:u:l:',
-                            ('config=', 'debug', 'quiet', 'title=', 'url=',
-                             'linkname='))
+        opts, args = getopt(args, 'c:t:u:T:',
+                            ('config=', 'title=', 'url=', 'urltitle='))
     except GetoptError, e:
-        return _exit("Usage error: %s" % str(e))
+        raise SystemExit("Usage error: %s" % str(e))
 
     message = PushoverMessage(' '.join(args))
 
     for option, value in opts:
         if option in ('-c', '--config'):
             rcfile = value
-        elif option in ('-d', '--debug'):
-            loglevel = logging.DEBUG
-        elif option in ('-q', '--quiet'):
-            logger = None
         elif option in ('-t', '--title'):
             message.setTitle(value.strip())
         elif option in ('-u', '--url'):
             message.setUrl(value.strip())
-        elif option in ('-l', '--linkname'):
+        elif option in ('-T', '--urltitle'):
             if not message.url:
-                raise SystemExit("Cannot provide linkname with no --url")
+                raise SystemExit("Cannot provide urltitle with no --url")
             message.setUrl(message.url, title=value.strip())
 
-    logging.basicConfig(format='%(levelname)s - %(message)s', level=loglevel)
-
-    config = PushoverConfig(logger=logger)
+    config = PushoverConfig()
     try:
         config.read(rcfile)
-    except IOError, e:
-        return _exit("Unable to read config: %s" % str(e))
+        config.validate()
+    except (PushoverConfigError, IOError), e:
+        raise SystemExit("Unable to configure: %s" % str(e))
 
-    if not config.validate():
-        return _exit("Invalid config")
-
-    sender = PushoverSender(config, logger=logger)
+    sender = PushoverSender(config)
     if sender.sendMessage(message):
-        if logger:
-            logger.info("Message sent")
+        print "Message sent"
     else:
-        return _exit("Message failed")
+        raise SystemExit("Message failed")
 
     return 0
 

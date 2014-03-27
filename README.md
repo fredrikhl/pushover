@@ -1,7 +1,7 @@
 # Pushover
 
 This is a simple python script to send push notifications using the service
-[Pushover](ihttps://pushover.net/).
+[Pushover](https://pushover.net/).
 
 
 ## Configuration
