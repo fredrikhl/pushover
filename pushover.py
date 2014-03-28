@@ -147,7 +147,7 @@ class PushoverConfig(object):
             (self.settings.keys() + self.options.keys())])
 
 
-class PushoverMessage:
+class PushoverMessage(object):
 
     """ Container structure for the Pushover message parameters. """
 
@@ -248,39 +248,70 @@ class PushoverSender:
             return False
         return True
 
-# TODO: Usage string. Should we use a proper library (argparse, optparse)?
 
-
-def main(args):
+def main():
     """ Script invoke. """
+
     import os.path
-    from getopt import getopt, GetoptError
 
-    rcfile = os.path.join(os.path.expanduser('~'), '.pushoverrc')
+    # Arguments for add_option/add_argument
+    # TODO: User/token key on command line?
+    joint_opts = [
+            (['-c', '--config', ], 
+             {'dest': 'rcfile',
+              'metavar': '<file>',
+              'help': 'Use config from <file>',
+              'default': os.path.join(os.path.expanduser('~'), '.pushoverrc'), }),
+            (['-t', '--title', ], 
+             {'dest': 'title',
+              'metavar': '<title>',
+              'help': 'Set message title to <title>', }),
+            (['-u', '--url', ], 
+             {'dest': 'url',
+              'metavar': '<url>',
+              'help': 'Include <url> in message', }),
+            (['-T', '--url-title', ], 
+             {'dest': 'url_title',
+              'metavar': '<title>',
+              'help': 'Set title of the <url> to <title>', }),
+         ]
 
+    # Setup argparse or optparse
     try:
-        opts, args = getopt(args, 'c:t:u:T:',
-                            ('config=', 'title=', 'url=', 'urltitle='))
-    except GetoptError, e:
-        raise SystemExit("Usage error: %s" % str(e))
+        import argparse
+        optargs = argparse.ArgumentParser(
+            description='Send message using pushover.')
+        for args, kwargs in joint_opts:
+            optargs.add_argument(*args, **kwargs)
+        optargs.add_argument('message', nargs='+')
 
-    message = PushoverMessage(' '.join(args))
+        opts = optargs.parse_args()
+        args = opts.message
+    except ImportError:
+        import optparse
+        optargs = optparse.OptionParser(
+            usage="usage: %prog [options] message [message ...]")
+        for args, kwargs in joint_opts:
+            optargs.add_option(*args, **kwargs)
+        opts, args = optargs.parse_args()
 
-    for option, value in opts:
-        if option in ('-c', '--config'):
-            rcfile = value
-        elif option in ('-t', '--title'):
-            message.setTitle(value.strip())
-        elif option in ('-u', '--url'):
-            message.setUrl(value.strip())
-        elif option in ('-T', '--urltitle'):
-            if not message.url:
-                raise SystemExit("Cannot provide urltitle with no --url")
-            message.setUrl(message.url, title=value.strip())
+    # We can't send empty messages around.
+    if not args:
+        raise SystemExit("No message to send")
+
+    # Ignore url title if no url is given
+    # TODO/TBD: Should this be considered incorrect use?
+    if opts.url_title and opts.url is None:
+        opts.url_title = None
+
+    message = PushoverMessage(' '.join(args),
+                              title=opts.title or '',
+                              url=opts.url or '',
+                              url_title=opts.url_title)
 
     config = PushoverConfig()
     try:
-        config.read(rcfile)
+        config.read(opts.rcfile)
         config.validate()
     except (PushoverConfigError, IOError), e:
         raise SystemExit("Unable to configure: %s" % str(e))
@@ -291,9 +322,6 @@ def main(args):
     else:
         raise SystemExit("Message failed")
 
-    return 0
-
 
 if __name__ == '__main__':
-    import sys
-    sys.exit(main(sys.argv[1:]))
+    main()
