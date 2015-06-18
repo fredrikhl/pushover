@@ -1,6 +1,5 @@
-#! /usr/bin/env python
-#   -*- coding: utf8 -*-
-#   coding=utf8
+#! /usr/bin/env python2
+# encoding: utf-8
 """ Pushover tools and script for sending messages. """
 
 from __future__ import with_statement
@@ -65,7 +64,8 @@ class PushoverConfig(object):
 
         if key in self.settings.keys():
             if not value:
-                raise PushoverConfigError("Setting '%s' requires a value" % key)
+                raise PushoverConfigError(
+                    "Setting '%s' requires a value" % key)
             self.settings[key] = value
         elif key in self.options.keys():
             self.options[key] = value
@@ -98,13 +98,14 @@ class PushoverConfig(object):
                 except ValueError:
                     raise PushoverConfigError(
                         "Error in config '%s', line %d: %s" % (
-                        filename, lineno, repr(line.strip())))
+                            filename, lineno, repr(line.strip())))
                 key, val = key.strip(), val.strip()
                 try:
                     setattr(self, key, val)
                 except PushoverConfigError, e:
                     raise PushoverConfigError(
-                        "Error in config '%s', line %d: %s" % (filename, lineno,
+                        "Error in config '%s', line %d: %s" % (filename,
+                                                               lineno,
                                                                str(e)))
 
     def url(self):
@@ -115,8 +116,8 @@ class PushoverConfig(object):
                                                      'resource': self.resource}
 
     def validate(self):
-        """ Check that we have all the neccessary stuff. 
-        
+        """ Check that we have all the neccessary stuff.
+
         The intention here is to check that the mandatory settings without a
         default value has been set.
 
@@ -128,16 +129,6 @@ class PushoverConfig(object):
         if missing:
             raise PushoverConfigError("Validate failed, missing settings: %s" %
                                       ','.join(missing))
-
-    #def prepareMessage(self, message):
-        #""" Return urlencoded message. """
-
-        #params = dict(message.toDict().items() + {'token': self.token,
-                                                  #'user': self.user})
-        #if self.device:
-            #params.update({'device': self.device})
-
-        #return urllib.urlencode(params)
 
     def __repr__(self):
         """ Get a simple representation of the settings. """
@@ -161,7 +152,7 @@ class PushoverMessage(object):
         self.setUrl(url, title=url_title)
         self.setMessage(message)
 
-        self.priority  = self.pri_default
+        self.priority = self.pri_default
         self.timestamp = None
 
     def setTitle(self, title):
@@ -194,12 +185,12 @@ class PushoverMessage(object):
         """ Return urlencoded message. """
 
         params = dict(self.toDict().items() + [('token', config.token),
-                                              ('user', config.user)])
+                                               ('user', config.user)])
         if config.device:
             params.update({'device': config.device})
 
         return urllib.urlencode(params)
-        
+
     def __repr__(self):
         """ String representation. """
 
@@ -257,24 +248,23 @@ def main():
     # Arguments for add_option/add_argument
     # TODO: User/token key on command line?
     joint_opts = [
-            (['-c', '--config', ], 
-             {'dest': 'rcfile',
-              'metavar': '<file>',
-              'help': 'Use config from <file>',
-              'default': os.path.join(os.path.expanduser('~'), '.pushoverrc'), }),
-            (['-t', '--title', ], 
-             {'dest': 'title',
-              'metavar': '<title>',
-              'help': 'Set message title to <title>', }),
-            (['-u', '--url', ], 
-             {'dest': 'url',
-              'metavar': '<url>',
-              'help': 'Include <url> in message', }),
-            (['-T', '--url-title', ], 
-             {'dest': 'url_title',
-              'metavar': '<title>',
-              'help': 'Set title of the <url> to <title>', }),
-         ]
+        (['-c', '--config', ],
+         {'dest': 'rcfile',
+          'metavar': '<file>',
+          'help': 'Use config from <file>',
+          'default': os.path.join(os.path.expanduser('~'), '.pushoverrc'), }),
+        (['-t', '--title', ],
+         {'dest': 'title',
+          'metavar': '<title>',
+          'help': 'Set message title to <title>', }),
+        (['-u', '--url', ],
+         {'dest': 'url',
+          'metavar': '<url>',
+          'help': 'Include <url> in message', }),
+        (['-T', '--url-title', ],
+         {'dest': 'url_title',
+          'metavar': '<title>',
+          'help': 'Set title of the <url> to <title>', }), ]
 
     # Setup argparse or optparse
     try:
@@ -321,7 +311,3 @@ def main():
         print "Message sent"
     else:
         raise SystemExit("Message failed")
-
-
-if __name__ == '__main__':
-    main()
