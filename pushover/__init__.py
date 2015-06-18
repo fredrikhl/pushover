@@ -275,6 +275,9 @@ def main():
             optargs.add_argument(*args, **kwargs)
         optargs.add_argument('message', nargs='+')
 
+        if '__main__' in optargs.prog:
+            optargs.prog = 'python -m ' + __package__
+
         opts = optargs.parse_args()
         args = opts.message
     except ImportError:
