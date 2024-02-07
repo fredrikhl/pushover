@@ -29,14 +29,14 @@ def main(inargs=None):
         dest="config_file",
         default=None,
         help="read config from %(metavar)s",
-        metavar="FILE",
+        metavar="<file>",
     )
     config_grp.add_argument(
         "-p", "--preset",
         dest="preset",
         default=None,
         help="use the %(metavar)s section from config",
-        metavar="PRESET",
+        metavar="<preset>",
     )
 
     # Add -q, -v, -vv, ...
@@ -45,64 +45,65 @@ def main(inargs=None):
 
     opt_grp = parser.add_argument_group("API options")
     opt_grp.add_argument(
-        "-u", "--url",
+        "--api",
         dest="api_url",
         default=None,
-        help="Override %(dest)s from config",
-        metavar="URL",
+        help="override %(dest)s from config with %(metavar)s",
+        metavar="<url>",
     )
     opt_grp.add_argument(
-        "-U", "--user",
+        "--user",
         dest="api_user",
         default=None,
-        help="Override %(dest)s from config",
-        metavar="USER",
+        help="override %(dest)s from config with %(metavar)s",
+        metavar="<user>",
     )
     opt_grp.add_argument(
-        "-T", "--token",
+        "--token",
         dest="api_token",
         default=None,
-        help="Override %(dest)s from config",
-        metavar="TOKEN",
+        help="override %(dest)s from config with %(metavar)s",
+        metavar="<token>",
     )
     opt_grp.add_argument(
         "-d", "--device",
         dest="api_device",
         default=None,
-        help="Override %(dest)s from config",
-        metavar="DEVICE",
+        help="override %(dest)s from config with %(metavar)s",
+        metavar="<device>",
     )
 
     msg_grp = parser.add_argument_group("Message options")
     msg_grp.add_argument(
-        "-t", "--msg-title",
+        "-t", "--title",
         dest="title",
         help="set message title to %(metavar)s",
-        metavar="TEXT",
+        metavar="<text>",
     )
     msg_grp.add_argument(
-        "--msg-url",
+        "--url",
         dest="msg_url",
         help="include %(metavar)s in message",
-        metavar="URL",
+        metavar="<url>",
     )
     msg_grp.add_argument(
-        "--msg-url-title",
+        "--url-title",
         dest="msg_url_title",
         help="set title of the url to %(metavar)s",
-        metavar="TEXT",
+        metavar="<text>",
     )
     msg_grp.add_argument(
-        "--msg-priority",
+        "--priority",
         dest="msg_priority",
         default=str(pushover.messages.DEFAULT_PRIORITY),
-        choices=filter(str, pushover.messages.PRIORITIES),
+        choices=[str(p) for p in pushover.messages.PRIORITIES],
         help="set the message priority, defaults to %(default)s",
+        metavar="<pri>",
     )
     msg_grp.add_argument(
         "message",
         nargs="+",
-        metavar="TEXT",
+        metavar="<text>",
     )
 
     args = parser.parse_args(inargs)
