@@ -82,3 +82,60 @@ def add_version_arg(arg_parser):
         action='version',
         version='%s %s' % (metadata.package, metadata.version),
     )
+
+
+class ArgparseCommands(object):
+    """
+    A simple argparse subcommand container/wrapper.
+
+    Example:
+    ::
+
+        parser = argparse.ArgumentParser(description="example")
+        commands = ArgparseCommands(parser, dest="command", required=True)
+
+        @commands("print", help="print message to stdout/stderr")
+        def print_command(args):
+            stream = sys.stderr if args.stream == "stderr" else sys.stdout
+            print(args.message, file=stream)
+
+        print_command.add_argument(
+            "--stream",
+            choices=["stdout", "stderr"],
+            default="stdout",
+            help="where to print (default: %(default)s)",
+        )
+        print_command.add_argument(
+            "message",
+            help="message to print",
+        )
+        args = parser.parse_args()
+        commands.run(args)
+
+    """
+    def __init__(self, parser, dest="command", **kwargs):
+        self.command_map = {}
+        self.dest = dest
+        self._subparsers = parser.add_subparsers(dest=dest, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        """ wrap function as sub-command. """
+        subparser = self._subparsers.add_parser(*args, **kwargs)
+        key = subparser.prog.split(" ")[-1]
+
+        def wrapper(func):
+            self.command_map[key] = func
+            return subparser
+
+        return wrapper
+
+    def run(self, args):
+        key = getattr(args, self.dest, None)
+        if not key:
+            raise RuntimeError("no command given")
+        if key not in self.command_map:
+            raise NotImplementedError("command not implemented: "
+                                      + repr(key))
+        func = self.command_map[key]
+        logger.debug("running command %r (%r)", key, func)
+        return func(args)

@@ -241,13 +241,6 @@ class PushoverPreset(PushoverOptionSet):
         return tuple(("api_url", "api_user", "api_token", "api_device"))
 
 
-EXAMPLE_CONFIG = PushoverPreset(
-    api_user="example-user",
-    api_token="example-token",
-    api_device="example-device",
-)
-
-
 class PushoverConfig(object):
     """
     The pushover config object.
@@ -334,157 +327,140 @@ def get_config(filename=None):
     return config
 
 
-#
-# python -m pushover.config
-#
-
 def main(inargs=None):
-
-    class Actions(object):
-        """ subparser to function map. """
-        def __init__(self):
-            self.funcmap = dict()
-
-        def __getitem__(self, key):
-            return self.funcmap[key]
-
-        def __call__(self, subparser):
-            def wrapper(func):
-                key = subparser.prog.split(" ")[-1]
-                self.funcmap[key] = func
-                return func
-            return wrapper
-
+    """ python -m pushover.config """
     parser = argparse.ArgumentParser(description="pushover config utilities")
     cli_utils.add_version_arg(parser)
 
     log_params = parser.add_argument_group("Logging")
     cli_utils.add_verbosity_mutex(log_params)
 
-    commands = parser.add_subparsers(title="commands", dest="command")
-    actions = Actions()
+    commands = cli_utils.ArgparseCommands(
+        parser,
+        title="commands",
+        dest="command",
+        metavar="<command>",
+        required=True,
+        help="one of the following commands:",
+    )
 
     #
-    # defaults [filename]
+    # defaults
     #
-    defaults_cmd = commands.add_parser(
-        "defaults",
-        help="dump the default configuration")
-    defaults_cmd.add_argument(
-        "output",
-        type=argparse.FileType("w"),
-        nargs="?",
-        default="-",
-        metavar="FILE",
-        help="write config to %(metavar)s (default: stdout)")
-
-    @actions(defaults_cmd)
-    def write_default_config(args):
+    @commands("defaults", help="dump a default example configuration")
+    def cmd_defaults(args):
         # [DEFAULT]
         config = PushoverConfig()
         config.dump(args.output)
 
         # [example] (commented out)
+        example_preset = PushoverPreset(
+            api_user="example-user",
+            api_token="example-token",
+            api_device="example-device",
+        )
         config.defaults.clear()
-        config.set_preset("example", EXAMPLE_CONFIG)
-        for line in config.dumps().splitlines(True):
-            args.output.write("# " + line)
+        config.set_preset("example-preset", example_preset)
+        for line in config.dumps().splitlines():
+            if line.strip():
+                args.output.write("# " + line + "\n")
 
         args.output.flush()
         if args.output not in (sys.stdout, sys.stderr):
             args.output.close()
 
-    #
-    # locations
-    #
-    locations_cmd = commands.add_parser(
-        "list-files",
-        help="show configuration file locations",
+    cmd_defaults.add_argument(
+        "output",
+        type=argparse.FileType("w"),
+        nargs="?",
+        default="-",
+        metavar="<file>",
+        help="write config to %(metavar)s (default: stdout)",
     )
-    locations_cmd.add_argument(
+
+    #
+    # list-files
+    #
+    @commands("list-files", help="show configuration file locations")
+    def cmd_list_files(args):
+        for filename in iter_config_dirs(filename=CONFIG_FILENAME,
+                                         include_missing=args.all):
+            print(filename)
+
+    cmd_list_files.add_argument(
         "--all",
         action="store_true",
         default=False,
         help="include missing config files",
     )
 
-    @actions(locations_cmd)
-    def show_config_locations(args):
-        for filename in iter_config_dirs(filename=CONFIG_FILENAME,
-                                         include_missing=args.all):
-            print(filename)
-
     #
-    # show
+    # show-config
     #
-    dump_cmd = commands.add_parser(
-        "dump-config",
-        help="show the effective configuration")
-    dump_cmd.add_argument(
-        "-c", "--config",
-        default=None,
-        metavar="FILE",
-        help="Use config from %(metavar)s")
-    dump_cmd.add_argument(
-        "-v", "--validate",
-        action="store_true",
-        default=False,
-        help="validate config")
-
-    @actions(dump_cmd)
-    def show_config(args):
+    @commands("show-config", help="show the current config")
+    def cmd_show_config(args):
         config = get_config(args.config)
         if args.validate:
             config.validate()
         config.dump(sys.stdout)
         sys.stdout.flush()
 
+    cmd_show_config.add_argument(
+        "-c", "--config",
+        default=None,
+        metavar="<file>",
+        help="Use config from %(metavar)s",
+    )
+    cmd_show_config.add_argument(
+        "-v", "--validate",
+        action="store_true",
+        default=False,
+        help="validate config",
+    )
+
     #
     # list-presets
     #
-    list_presets_cmd = commands.add_parser(
-        "list-presets",
-        help="show presets in the effective configuration")
-    list_presets_cmd.add_argument(
-        "-c", "--config",
-        default=None,
-        metavar="FILE",
-        help="Use config from %(metavar)s")
-
-    @actions(list_presets_cmd)
-    def list_presets(args):
+    @commands("list-presets", help="list available presets")
+    def cmd_list_presets(args):
         config = get_config(args.config)
         for preset in config.list_presets():
             print(preset)
 
-    #
-    # show-preset
-    #
-    show_preset_cmd = commands.add_parser(
-        "show-preset",
-        help="show presets in the effective configuration")
-    show_preset_cmd.add_argument(
+    cmd_list_presets.add_argument(
         "-c", "--config",
         default=None,
-        metavar="FILE",
-        help="Use config from %(metavar)s")
-    show_preset_cmd.add_argument(
-        "preset",
-        nargs="?",
-        default=None,
-        metavar="PRESET")
+        metavar="<file>",
+        help="Use config from %(metavar)s",
+    )
 
-    @actions(show_preset_cmd)
-    def show_preset(args):
+    #
+    # show-preset <preset>
+    #
+    @commands("show-preset", help="show a given preset from config")
+    def cmd_show_preset(args):
         config = get_config(args.config)
         preset = config.get_preset(args.preset)
         for key in preset:
             value = getattr(preset, key)
             print("{key} = {value}".format(key=key, value=value))
 
-    args = parser.parse_args()
+    cmd_show_preset.add_argument(
+        "-c", "--config",
+        default=None,
+        metavar="<file>",
+        help="Use config from %(metavar)s",
+    )
+    cmd_show_preset.add_argument(
+        "preset",
+        nargs="?",
+        default=None,
+        metavar="<preset>",
+    )
+
+    args = parser.parse_args(inargs)
     cli_utils.setup_logging(args.verbosity)
-    actions[args.command](args)
+    commands.run(args)
 
 
 if __name__ == "__main__":
