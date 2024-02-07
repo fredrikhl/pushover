@@ -7,18 +7,19 @@ This is a simple python script to send push notifications using the
 ## Configuration
 
 The pushover config uses the Python `ConfigParser` format, and reads
-configuration files in order from:
+the first configuration file found from:
 
-1. `${XDG_DATA_DIRS}/pushover/pushover.conf`
+1. `${XDG_CONFIG_HOME}/pushover/pushover.conf`
 2. `${XDG_CONFIG_DIRS}/pushover/pushover.conf`
-3. `${XDG_CONFIG_HOME}/pushover/pushover.conf`
 
-... which means that anything set in the latter configuration files will
-override settings from previous ones.
 
-In addition, the configuration files operates with 'presets', so that multiple
-accounts or multiple devices can be used in parallell. Given the following
-configuration:
+The configuration file can be structured into different sections.  The *DEFAULT*
+section contains default settings, while all other sections are named *presets*
+that can override the defaults.
+
+In the following example, a single *pushover.net* client application is
+configured in the *DEFAULT* section, while the *my-device* section limits the
+recipient to a single, named device.
 
 ```conf
 [DEFAULT]
@@ -31,7 +32,4 @@ api_device
 api_device = example-device
 ```
 
-pushover will send to all devices by default, but if the preset `"my-device"` is
-selected, it will only send to the device `"example-device"`.
-
-All configuration options can be replaced with command line options.
+All configuration options can be overridden with command line options.

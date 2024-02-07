@@ -16,12 +16,6 @@ from . import cli_utils
 
 logger = logging.getLogger(__name__)
 
-
-_XDG_DATA_DIRS = (
-    os.environ.get("XDG_CONFIG_DIRS")
-    or "/usr/local/share:/usr/share"
-).split(":")
-
 _XDG_CONFIG_DIRS = (
     os.environ.get("XDG_CONFIG_DIRS")
     or "/etc/xdg/pushover"
@@ -32,36 +26,41 @@ _XDG_CONFIG_HOME = (
     or os.path.expanduser("~/.config")
 )
 
-
 # Config file basename
 CONFIG_FILENAME = "pushover.conf"
 
 # Any item will overwrite values from the previous
 CONFIG_DIRS = (
-    tuple(os.path.join(d, "pushover") for d in reversed(_XDG_DATA_DIRS))
-    + tuple(os.path.join(d, "pushover") for d in reversed(_XDG_CONFIG_DIRS))
+    tuple(os.path.join(d, "pushover") for d in reversed(_XDG_CONFIG_DIRS))
     + (os.path.join(_XDG_CONFIG_HOME, "pushover"),)
 )
 
 
-def get_priority(filename=None, reverse=False, filter_missing=False):
-    """ Get an ordered list of config file locations.  """
+def iter_config_dirs(filename=None, reverse=False, include_missing=False):
+    """
+    Get all possible config file locations.
+
+    :param str filename: config file to find (relative to config basedir)
+    :param bool reverse: order from highest priority to lowest priority
+    :param include_missing: include dirs/files that aren't present
+    """
     dirs = reversed(CONFIG_DIRS) if reverse else CONFIG_DIRS
     for d in dirs:
         path = os.path.join(d, filename) if filename else d
-        if not filter_missing or os.path.exists(path):
+        if include_missing or os.path.exists(path):
             yield path
 
 
 def find_config(filename):
     """
-    Find all available configuration files.
+    Find best config file match for a given filename.
 
-    :param filename: An optional user supplied file to throw into the mix
+    :param filename: filename relative to the config directory.
     """
-    for filename in get_priority(filename=filename, filter_missing=True):
+    for filename in iter_config_dirs(filename=filename, reverse=True,
+                                     include_missing=False):
         logger.debug("found config %r", filename)
-        yield filename
+        return filename
 
 
 class PushoverOption(object):
@@ -149,7 +148,6 @@ class PushoverOptionSet(object):
             bar = PushoverOption()
     """
 
-    # rename url -> api_url, etc?
     # add app_default_preset?
     # add msg_default_* for message settings?
 
@@ -313,23 +311,27 @@ class PushoverConfig(object):
             self.dump(fileobj)
             return fileobj.getvalue()
 
+    def validate(self):
+        for preset in self.list_presets():
+            preset = self.get_preset(preset)
+            preset.validate()
+
 
 def get_config(filename=None):
+    """
+    Read config from the default locations.
+
+    :param filename: filename to an alternative config
+    """
+    if not filename:
+        filename = find_config(CONFIG_FILENAME)
+
     config = PushoverConfig()
-    filenames = list(find_config(CONFIG_FILENAME))
     if filename:
-        filenames.append(filename)
-    for filename in filenames:
         logger.debug("loading config %r", filename)
         with io.open(filename, mode="r", encoding="utf-8") as fd:
             config.load(fd)
     return config
-
-
-def validate_config(config):
-    for preset in config.list_presets():
-        preset = config.get_preset(preset)
-        preset.validate()
 
 
 #
@@ -400,18 +402,16 @@ def main(inargs=None):
         help="show configuration file locations",
     )
     locations_cmd.add_argument(
-        "--only-existing",
+        "--all",
         action="store_true",
         default=False,
-        help="only list configuration files that are present")
+        help="include missing config files",
+    )
 
     @actions(locations_cmd)
     def show_config_locations(args):
-        if args.only_existing:
-            locations = find_config(filename=CONFIG_FILENAME)
-        else:
-            locations = get_priority(filename=CONFIG_FILENAME)
-        for filename in locations:
+        for filename in iter_config_dirs(filename=CONFIG_FILENAME,
+                                         include_missing=args.all):
             print(filename)
 
     #
@@ -435,7 +435,7 @@ def main(inargs=None):
     def show_config(args):
         config = get_config(args.config)
         if args.validate:
-            validate_config(config)
+            config.validate()
         config.dump(sys.stdout)
         sys.stdout.flush()
 
