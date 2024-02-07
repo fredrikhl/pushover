@@ -1,68 +1,48 @@
 """ Pushover message object. """
 import datetime
+import enum
 
 from .config import PushoverOption, PushoverOptionSet
 
 
-class PushoverPriority(object):
+class PushoverPriority(enum.IntEnum):
+    """
+    Pushover message priority levels.
 
-    def __init__(self, strval, intval):
-        self.strval = strval
-        self.intval = intval
+    This enum can be used to validate, serialize and deserialize priority
+    levels.
+    """
+    lowest = -2
+    low = -1
+    normal = 0
+    high = 1
+    emergency = 2
 
-    def __int__(self):
-        return self.intval
+    @classmethod
+    def _missing_(cls, value):
+        # support looking up enum by serialized intval
+        try:
+            intval = int(value)
+        except ValueError:
+            pass
+        else:
+            if intval in cls:
+                return cls(intval)
+            else:
+                return None
 
-    def __str__(self):
-        return self.strval
-
-    def __eq__(self, other):
-        if all(hasattr(other, attr) for attr in ('__int__', '__str__')):
-            return int(self) == int(other) and str(self) == str(other)
-        return NotImplemented
-
-
-PRIORITY_EMERGENCY = PushoverPriority('emergency', 2)
-PRIORITY_HIGH = PushoverPriority('high', 1)
-PRIORITY_NORMAL = PushoverPriority('normal', 0)
-PRIORITY_LOW = PushoverPriority('low', -1)
-PRIORITY_LOWEST = PushoverPriority('lowest', -2)
-
-PRIORITIES = tuple((
-    PRIORITY_EMERGENCY,
-    PRIORITY_HIGH,
-    PRIORITY_NORMAL,
-    PRIORITY_LOW,
-    PRIORITY_LOWEST,
-))
-
-_int_to_priority_map = dict(
-    (int(p), p) for p in PRIORITIES)
-
-_str_to_priority_map = dict(
-    (str(p), p) for p in PRIORITIES)
-
-DEFAULT_PRIORITY = PRIORITY_NORMAL
+        # support looking up enum by name
+        for member in cls:
+            if member.name == value:
+                return member
+        return None
 
 
-def get_priority(value):
-    if value in PRIORITIES:
-        return value
-
-    try:
-        return _str_to_priority_map[str(value)]
-    except (ValueError, KeyError):
-        pass
-
-    try:
-        return _int_to_priority_map[int(value)]
-    except (TypeError, ValueError, KeyError):
-        pass
-    raise ValueError("invalid priority %r" % (value, ))
+DEFAULT_PRIORITY = PushoverPriority.normal
 
 
 def get_timestamp(value):
-    if isinstance(value, basestring) and value.isdigit():
+    if isinstance(value, str) and value.isdigit():
         value = int(value)
 
     if isinstance(value, datetime.datetime):
@@ -83,10 +63,11 @@ _config_param_map = {
 
 class PushoverMessage(PushoverOptionSet):
     """ Container structure for the Pushover message parameters. """
+
     priority = PushoverOption(
         default=DEFAULT_PRIORITY,
-        deserialize=get_priority,
-        serialize=lambda p: int(p),
+        deserialize=PushoverPriority,
+        serialize=int,
     )
     message = PushoverOption(
         default=None,
@@ -116,17 +97,19 @@ class PushoverMessage(PushoverOptionSet):
         self.message = message
         super(PushoverMessage, self).__init__(**kwargs)
 
-    def prepare(self, config):
-        """ Return urlencoded message. """
-        params = dict(self.to_dict())
+    def prepare(self, preset):
+        """
+        Return serialized message params using a given preset.
 
-        params.update(
-            (_config_param_map[k], v)
-            for k, v in config.to_dict().items()
-            if k != 'api_url'
-        )
+        """
+        # Create a message dict with serialized fields from preset
+        # (device, etc..)
+        params = {
+            _config_param_map[k]: v
+            for k, v in preset.to_dict().items()
+            if k in _config_param_map
+        }
 
-        # if config.api_device:
-        #     params.update({'device': config.device})
-
+        # Update message dict with serialized fields from this object
+        params.update(self.to_dict())
         return params

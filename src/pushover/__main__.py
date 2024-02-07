@@ -76,7 +76,7 @@ def main(inargs=None):
     msg_grp = parser.add_argument_group("Message options")
     msg_grp.add_argument(
         "-t", "--title",
-        dest="title",
+        dest="msg_title",
         help="set message title to %(metavar)s",
         metavar="<text>",
     )
@@ -95,8 +95,8 @@ def main(inargs=None):
     msg_grp.add_argument(
         "--priority",
         dest="msg_priority",
-        default=str(pushover.messages.DEFAULT_PRIORITY),
-        choices=[str(p) for p in pushover.messages.PRIORITIES],
+        default=pushover.messages.DEFAULT_PRIORITY.name,
+        choices=[p.name for p in pushover.messages.PushoverPriority],
         help="set the message priority, defaults to %(default)s",
         metavar="<pri>",
     )
