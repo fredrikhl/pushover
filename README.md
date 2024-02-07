@@ -1,18 +1,37 @@
 # Pushover
 
-This is a simple python script to send push notifications using the service
-[Pushover](https://pushover.net/).
+This is a simple python script to send push notifications using the
+[Pushover](https://pushover.net/) service.
 
 
 ## Configuration
 
-For now, configuration is done by using a simple file, containing "key = value"
-pairs. This file should at least contain:
+The pushover config uses the Python `ConfigParser` format, and reads
+configuration files in order from:
 
-    token = <your pushover api token>
-    user  = <your pushover user key>
+1. `${XDG_DATA_DIRS}/pushover/pushover.conf`
+2. `${XDG_CONFIG_DIRS}/pushover/pushover.conf`
+3. `${XDG_CONFIG_HOME}/pushover/pushover.conf`
 
-This file can be stored as `${HOME}/.pushoverrc` or given as a command line
-option.
+... which means that anything set in the latter configuration files will
+override settings from previous ones.
 
+In addition, the configuration files operates with 'presets', so that multiple
+accounts or multiple devices can be used in parallell. Given the following
+configuration:
 
+```conf
+[DEFAULT]
+api_url = https://api.pushover.net/1/messages.json
+api_user = example-user
+api_token = example-token
+api_device
+
+[my-device]
+api_device = example-device
+```
+
+pushover will send to all devices by default, but if the preset `"my-device"` is
+selected, it will only send to the device `"example-device"`.
+
+All configuration options can be replaced with command line options.
